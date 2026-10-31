@@ -16,7 +16,7 @@ import static prosemirrorfx.core.schema.EditorSchema.*;
 public final class Commands {
 
     public static final Command
-            enter = chain(Lists.splitListItem(LIST_ITEM), Split.liftEmptyBlock, Split.splitBlockKeepMarks),
+            enter = chain(Commands::openFence, Commands::lineInFence, Lists.splitListItem(LIST_ITEM), Split.liftEmptyBlock, Split.splitBlockKeepMarks),
             backspace = chain(deleteSelection, Commands::deleteCharBackward, Commands::liftAtItemStart, Join.joinBackward),
             delete = chain(deleteSelection, Commands::deleteCharForward, Join.joinForward),
             indent = Lists.sinkListItem(LIST_ITEM),
@@ -93,6 +93,66 @@ public final class Commands {
             }
             return Lists.wrapInList(listType, null).apply(state, dispatch);
         };
+    }
+
+    static final java.util.regex.Pattern FENCE_OPEN = java.util.regex.Pattern.compile("^(`{3,}|~{3,})[^`]*$"),
+            FENCE_CLOSE = java.util.regex.Pattern.compile("^(`{3,}|~{3,})[ \\t]*$");
+
+    static boolean verbatim(Node n) { return n.getType() == PARAGRAPH && Boolean.TRUE.equals(Pm.attr(n, "verbatim")); }
+
+    static Node lineBreak() { return HARD_BREAK.create(Map.of("raw", ""), (Fragment) null, null); }
+
+    /**
+     * Enter at the end of a normal paragraph that is only ```lang (or ~~~): it becomes a fenced block, the way the reader
+     * keeps one (a verbatim paragraph: fence line, break, code lines, break, closing fence), with the caret on the empty
+     * line inside. A block that would end its container gets an empty paragraph after it, so an arrow key can leave it.
+     */
+    static boolean openFence(PMEditorState state, Consumer<Transaction> dispatch) {
+        var c = Cuts.cursor(state);
+        if (c == null) return false;
+        var p = c.getParent();
+        // only at the top level: inside a list item the code lines would need the item's indent, which the writer does not add to a verbatim block
+        if (c.getDepth() != 1 || p.getType() != PARAGRAPH || verbatim(p) || c.getParentOffset() != p.getContent().getSize() || p.getChildCount() != 1 || !p.getFirstChild().isText()) return false;
+        var line = p.getTextContent();
+        var m = FENCE_OPEN.matcher(line);
+        if (!m.matches()) return false;
+        if (dispatch != null) {
+            var fence = m.group(1);
+            var attrs = new java.util.HashMap<String, Object>(p.getAttrs());
+            attrs.put("verbatim", true);
+            attrs.put("src", null);
+            attrs.put("lead", "");
+            var block = PARAGRAPH.create(attrs, Fragment.Companion.fromArray(java.util.List.of(SCHEMA.text(line, null), lineBreak(), lineBreak(), SCHEMA.text(fence, null))), null);
+            var start = c.before(null);
+            var tr = state.getTr();
+            tr.replaceWith(start, c.after(null), block);
+            if (c.index(-1) == c.node(-1).getChildCount() - 1) tr.insert(start + block.getNodeSize(), PARAGRAPH.create(null, (Fragment) null, null));
+            tr.setSelection(Pm.cursor(tr.getDoc(), start + 1 + line.length() + 1));
+            dispatch.accept(tr.scrollIntoView());
+        }
+        return true;
+    }
+
+    /** Enter inside a fenced block adds a line; only at the end of the closing fence does it leave the block (falls through to a split). */
+    static boolean lineInFence(PMEditorState state, Consumer<Transaction> dispatch) {
+        var sel = state.getSelection();
+        var from = sel.get_from();
+        var p = from.getParent();
+        if (!verbatim(p) || from.getParent() != sel.get_to().getParent()) return false;
+        if (sel.getEmpty() && from.getParentOffset() == p.getContent().getSize()) {
+            var text = p.getTextContent();
+            var last = p.getLastChild();
+            var lastLine = last != null && last.isText() ? last.getText() : "";
+            var hasBreak = false;
+            for (var k = 0; k < p.getChildCount(); k++) hasBreak |= p.child(k).getType() == HARD_BREAK;
+            if (hasBreak && FENCE_CLOSE.matcher(lastLine.strip()).matches() && !text.isEmpty()) return false;
+        }
+        if (dispatch != null) {
+            var tr = state.getTr();
+            tr.replaceSelectionWith(lineBreak(), false);
+            dispatch.accept(tr.scrollIntoView());
+        }
+        return true;
     }
 
     /** Shift+Enter: a line break inside the paragraph. */
