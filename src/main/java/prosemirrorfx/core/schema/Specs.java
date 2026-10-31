@@ -20,5 +20,8 @@ final class Specs {
     /** A mark that excludes every other mark: its text is source to be written exactly as it is. */
     static MarkSpec exclusive() { return new MarkSpecImpl(null, false, "_", null, null, null, null); }
 
+    /** A mark with no attributes that stacks with the others and only excludes itself. */
+    static MarkSpec plain() { return new MarkSpecImpl(null, true, null, null, null, null, null); }
+
     private Specs() {}
 }

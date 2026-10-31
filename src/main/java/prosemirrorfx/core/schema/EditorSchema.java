@@ -23,7 +23,10 @@ public final class EditorSchema {
             EM = SCHEMA.getMarks().get("em"),
             CODE = SCHEMA.getMarks().get("code"),
             LINK = SCHEMA.getMarks().get("link"),
-            RAW = SCHEMA.getMarks().get("raw");
+            RAW = SCHEMA.getMarks().get("raw"),
+            HIGHLIGHT = SCHEMA.getMarks().get("highlight"),
+            STRIKE = SCHEMA.getMarks().get("strike"),
+            FOOTNOTE = SCHEMA.getMarks().get("footnote");
 
     /**
      * Optional attributes that let a file be written back as it was read (see io.Lossless). All default to
@@ -38,6 +41,9 @@ public final class EditorSchema {
         nodes.put("doc", Specs.withAttrs(nodes.get("doc"), attrs("tail", "\n", "eol", "\n", "bom", false)));
         var marks = new LinkedHashMap<>(SchemaBasicKt.getMarks());
         marks.put("raw", Specs.exclusive());
+        marks.put("highlight", Specs.plain());
+        marks.put("strike", Specs.plain());
+        marks.put("footnote", Specs.plain());
         return new Schema(new SchemaSpec(nodes, marks, null,
                 "unsupportedBlock", "unsupportedInline", null, null, "unsupportedMark", null));
     }

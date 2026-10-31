@@ -24,12 +24,15 @@ public final class InputRules {
                         (m, n) -> n.getChildCount() + intAttr(n, "order") == Integer.parseInt(m.group(1))));
         RULES.put(Pattern.compile("\\*\\*([^*\\s](?:[^*]*[^*\\s])?)\\*\\*$"), InputRule.mark(STRONG, 2));
         RULES.put(Pattern.compile("(?:^|[^_\\w])_([^_\\s](?:[^_]*[^_\\s])?)_$"), InputRule.mark(EM, 1));
+        // `code`: the closing backtick turns what is between the two into an inline code span (``` for a fence has nothing between, so it does not fire)
+        RULES.put(Pattern.compile("(?:^|[^`])`([^`]+)`$"), InputRule.mark(CODE, 1));
     }
 
     /** The transaction a rule makes of typing text over from..to, or null when no rule fires. */
     public static Transaction match(PMEditorState state, int from, int to, String text) {
         var pos = state.getDoc().resolve(from);
-        if (isCode(pos.getParent())) return null;
+        // a fenced block is a verbatim paragraph: what is typed in it is code, not Markdown to be turned into formatting
+        if (isCode(pos.getParent()) || Boolean.TRUE.equals(attr(pos.getParent(), "verbatim"))) return null;
         var before = pos.getParent().textBetween(Math.max(0, pos.getParentOffset() - MAX_MATCH), pos.getParentOffset(), null, "￼") + text;
         var shift = from - (before.length() - text.length());
         for (var e : RULES.entrySet()) {
