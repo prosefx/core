@@ -111,8 +111,8 @@ public final class Commands {
         var c = Cuts.cursor(state);
         if (c == null) return false;
         var p = c.getParent();
-        // only at the top level: inside a list item the code lines would need the item's indent, which the writer does not add to a verbatim block
-        if (c.getDepth() != 1 || p.getType() != PARAGRAPH || verbatim(p) || c.getParentOffset() != p.getContent().getSize() || p.getChildCount() != 1 || !p.getFirstChild().isText()) return false;
+        // anywhere a paragraph is, a list item too: the Markdown writer gives the code lines the item's indent
+        if (p.getType() != PARAGRAPH || verbatim(p) || c.getParentOffset() != p.getContent().getSize() || p.getChildCount() != 1 || !p.getFirstChild().isText()) return false;
         var line = p.getTextContent();
         var m = FENCE_OPEN.matcher(line);
         if (!m.matches()) return false;
