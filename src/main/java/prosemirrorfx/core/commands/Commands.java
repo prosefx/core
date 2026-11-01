@@ -16,7 +16,7 @@ import static prosemirrorfx.core.schema.EditorSchema.*;
 public final class Commands {
 
     public static final Command
-            enter = chain(Commands::openFence, Commands::lineInFence, Lists.splitListItem(LIST_ITEM), Split.liftEmptyBlock, Split.splitBlockKeepMarks),
+            enter = chain(Commands::openFence, Commands::lineInFence, Commands::lineInTable, Lists.splitListItem(LIST_ITEM), Split.liftEmptyBlock, Split.splitBlockKeepMarks),
             backspace = chain(deleteSelection, Commands::deleteCharBackward, Commands::liftAtItemStart, Join.joinBackward),
             delete = chain(deleteSelection, Commands::deleteCharForward, Join.joinForward),
             indent = Lists.sinkListItem(LIST_ITEM),
@@ -153,6 +153,109 @@ public final class Commands {
             dispatch.accept(tr.scrollIntoView());
         }
         return true;
+    }
+
+    /**
+     * Enter on a line that starts with `|`: a new line in the same paragraph, not a new paragraph, so that a pipe table
+     * typed row by row stays one table (a blank line between its rows would end it). A view that draws tables may
+     * handle Enter in a finished table itself first (a new empty row).
+     */
+    static boolean lineInTable(PMEditorState state, Consumer<Transaction> dispatch) {
+        var sel = state.getSelection();
+        var from = sel.get_from();
+        var p = from.getParent();
+        if (!sel.getEmpty() || p.getType() != PARAGRAPH || verbatim(p)) return false;
+        var text = p.textBetween(0, p.getContent().getSize(), null, "\n");
+        var off = from.getParentOffset();
+        var start = text.lastIndexOf('\n', off - 1) + 1;
+        var line = text.substring(start, text.indexOf('\n', start) < 0 ? text.length() : text.indexOf('\n', start));
+        // Enter on an empty last line under a pipe row: the line goes, and a new paragraph starts after the table
+        if (line.isEmpty() && start > 0 && off == text.length()) {
+            var prev = text.substring(text.lastIndexOf('\n', start - 2) + 1, start - 1);
+            if (!prev.stripLeading().startsWith("|")) return false;
+            if (dispatch != null) {
+                var tr = state.getTr();
+                tr.delete(from.getPos() - 1, from.getPos());
+                tr.split(from.getPos() - 1, 1, null);
+                dispatch.accept(tr.scrollIntoView());
+            }
+            return true;
+        }
+        if (!line.stripLeading().startsWith("|")) return false;
+        if (dispatch != null) {
+            var tr = state.getTr();
+            tr.replaceSelectionWith(lineBreak(), false);
+            dispatch.accept(tr.scrollIntoView());
+        }
+        return true;
+    }
+
+    /**
+     * The block the caret is in as a fenced code block: a top-level paragraph's lines become the code between ``` fence
+     * lines (formatting dropped), an empty one gives an empty block with the caret inside. A block ending the document
+     * gets an empty paragraph after it, so an arrow key can leave.
+     */
+    public static boolean codeBlock(PMEditorState state, Consumer<Transaction> dispatch) {
+        var c = state.getSelection().get_from();
+        var p = c.getParent();
+        if (c.getDepth() != 1 || p.getType() != PARAGRAPH || verbatim(p)) return false;
+        if (dispatch != null) {
+            var lines = p.textBetween(0, p.getContent().getSize(), null, "\n").split("\n", -1);
+            var kids = new java.util.ArrayList<Node>();
+            kids.add(SCHEMA.text("```", null));
+            for (var line : lines) {
+                kids.add(lineBreak());
+                if (!line.isEmpty()) kids.add(SCHEMA.text(line, null));
+            }
+            kids.add(lineBreak());
+            kids.add(SCHEMA.text("```", null));
+            var block = PARAGRAPH.create(Map.of("verbatim", true, "lead", ""), Fragment.Companion.fromArray(kids), null);
+            var start = c.before(null);
+            var tr = state.getTr();
+            tr.replaceWith(start, c.after(null), block);
+            if (c.index(0) == state.getDoc().getChildCount() - 1) tr.insert(start + block.getNodeSize(), PARAGRAPH.create(null, (Fragment) null, null));
+            // the caret at the end of the code's last line
+            tr.setSelection(Pm.cursor(tr.getDoc(), start + block.getNodeSize() - 1 - 3 - 1));
+            dispatch.accept(tr.scrollIntoView());
+        }
+        return true;
+    }
+
+    /**
+     * A pipe table of the given size (a header row and rows below it, empty cells) in place of an empty top-level
+     * paragraph, or after the top-level block the caret is in; the first header cell's name is selected, to type over.
+     */
+    public static Command insertTable(int rows, int cols) {
+        return (state, dispatch) -> {
+            var c = state.getSelection().get_from();
+            if (rows < 1 || cols < 1) return false;
+            if (dispatch != null) {
+                var lines = new java.util.ArrayList<String>();
+                var head = new StringBuilder("|");
+                for (var k = 1; k <= cols; k++) head.append(" Column ").append(k).append(" |");
+                lines.add(head.toString());
+                lines.add("|" + "---|".repeat(cols));
+                for (var r = 0; r < rows; r++) lines.add("|" + "  |".repeat(cols));
+                var kids = new java.util.ArrayList<Node>();
+                for (var line : lines) {
+                    if (!kids.isEmpty()) kids.add(lineBreak());
+                    kids.add(SCHEMA.text(line, null));
+                }
+                var table = PARAGRAPH.create(null, Fragment.Companion.fromArray(kids), null);
+                var top = c.getDepth() == 0 ? null : c.node(1);
+                var empty = top != null && c.getDepth() == 1 && top.getType() == PARAGRAPH && top.getContent().getSize() == 0;
+                var tr = state.getTr();
+                int start;
+                if (top == null) { start = c.getPos(); tr.insert(start, table); }
+                else if (empty) { start = c.before(1); tr.replaceWith(start, c.after(1), table); }
+                else { start = c.after(1); tr.insert(start, table); }
+                if (start + table.getNodeSize() >= tr.getDoc().getContent().getSize()) tr.insert(start + table.getNodeSize(), PARAGRAPH.create(null, (Fragment) null, null));
+                var from = start + 1 + "| ".length();
+                tr.setSelection(TextSelection.Companion.create(tr.getDoc(), from, from + "Column 1".length(), false));
+                dispatch.accept(tr.scrollIntoView());
+            }
+            return true;
+        };
     }
 
     /** Shift+Enter: a line break inside the paragraph. */
