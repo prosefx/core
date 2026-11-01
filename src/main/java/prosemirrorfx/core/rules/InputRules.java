@@ -26,6 +26,9 @@ public final class InputRules {
         RULES.put(Pattern.compile("(?:^|[^_\\w])_([^_\\s](?:[^_]*[^_\\s])?)_$"), InputRule.mark(EM, 1));
         // `code`: the closing backtick turns what is between the two into an inline code span (``` for a fence has nothing between, so it does not fire)
         RULES.put(Pattern.compile("(?:^|[^`])`([^`]+)`$"), InputRule.mark(CODE, 1));
+        // ^^text^^ (Logseq) a highlight, ~~text~~ (GitHub) a strike: the closing pair marks what is between, as ** does
+        RULES.put(Pattern.compile("\\^\\^([^^\\s](?:[^^]*[^^\\s])?)\\^\\^$"), InputRule.mark(HIGHLIGHT, 2));
+        RULES.put(Pattern.compile("~~([^~\\s](?:[^~]*[^~\\s])?)~~$"), InputRule.mark(STRIKE, 2));
     }
 
     /** The transaction a rule makes of typing text over from..to, or null when no rule fires. */
