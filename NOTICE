@@ -1,9 +1,9 @@
-prosemirrorfx-core
-Copyright 2026 the prosemirrorfx authors. Licensed under the Apache License, Version 2.0.
+prosefx-core
+Copyright 2026 the prosefx authors. Licensed under the Apache License, Version 2.0.
 
 This module is built on prosemirror-kotlin (https://github.com/atlassian-labs/prosemirror-kotlin),
 a Kotlin port of ProseMirror by Atlassian, licensed under the Apache License, Version 2.0.
 
 The document model and editing design follow ProseMirror by Marijn Haverbeke, licensed under the MIT licence.
 
-prosemirrorfx is an independent project. It is not affiliated with, or endorsed by, ProseMirror or Atlassian.
+prosefx is an independent project. It is not affiliated with, or endorsed by, ProseMirror or Atlassian.
